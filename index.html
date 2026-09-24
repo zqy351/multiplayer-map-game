@@ -522,10 +522,10 @@ $('nick').value='玩家'+Math.floor(10+Math.random()*90);
 $('btnCreate').addEventListener('click',createRoom);
 $('btnJoin').addEventListener('click',()=>{
   const input=$('roomCode');
-  if(input.style.display==='none'){input.style.display='block'; input.focus(); return;}
+  input.style.display='block';
   const code=input.value.trim().toUpperCase();
-  if(!/^[A-Z0-9]{5}$/.test(code)){uiLog('请输入 5 位房间码'); return;}
-  joinRoom(code);
+  if(/^[A-Z0-9]{5}$/.test(code)){joinRoom(code); return;}
+  input.focus();
 });
 $('roomCode').addEventListener('keydown',e=>{
   if(e.key==='Enter'){
