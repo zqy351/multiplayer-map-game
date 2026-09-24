@@ -265,6 +265,7 @@ function cleanupPeer(){
 }
 function resetToMenu(){
   cleanupPeer();
+  joining=false;
   $('menu').style.display='flex'; $('hud').style.display='none'; $('board').style.display='none';
 }
 function showGame(){
@@ -278,10 +279,21 @@ function createRoom(){
   myName=$('nick').value.trim()||('玩家'+Math.floor(10+Math.random()*90));
   me=makeMe();
   showLoading('正在创建房间…');
+  let opened=false;
+  const openTimer=setTimeout(()=>{
+    if(!opened){
+      hideLoading();
+      if(peer){try{peer.destroy();}catch(e){}}
+      peer=null;
+      uiLog('连接超时：请检查网络后刷新重试');
+      resetToMenu();
+    }
+  },20000);
   const tryCreate=()=>{
     const code=makeCode();
     peer=new Peer(code);
     peer.on('open',id=>{
+      opened=true; clearTimeout(openTimer);
       myPeerId=id; roomCode=id; me.id=id;
       players={}; players[id]=me;
       hideLoading(); showGame();
@@ -296,31 +308,62 @@ function createRoom(){
     });
     peer.on('error',e=>{
       if(e.type==='unavailable-id'){try{peer.destroy();}catch(_){} tryCreate();}
-      else{hideLoading(); uiLog('创建失败：'+e.type+'，请检查网络'); resetToMenu();}
+      else if(inGame&&(e.type==='network'||e.type==='socket-error'||e.type==='server-error'||e.type==='disconnected')){
+        uiLog('网络波动，正在重连…');
+        if(peer&&!peer.destroyed){try{peer.reconnect();}catch(_){}}
+      }
+      else{hideLoading(); clearTimeout(openTimer); uiLog('创建失败：'+e.type+'，请检查网络'); resetToMenu();}
+    });
+    peer.on('disconnected',()=>{
+      if(peer&&!peer.destroyed){try{peer.reconnect();}catch(e){}}
     });
   };
   tryCreate();
 }
 
+let joining=false;
 function joinRoom(code){
+  if(joining)return;
+  joining=true;
   cleanupPeer();
   isHost=false;
   myName=$('nick').value.trim()||('玩家'+Math.floor(10+Math.random()*90));
   me=makeMe();
   showLoading('正在连接房间 '+code+' …');
+  let joined=false;
+  const timer=setTimeout(()=>{
+    if(!joined){
+      hideLoading();
+      if(peer){try{peer.destroy();}catch(e){}}
+      peer=null; hostConn=null;
+      uiLog('连接超时：请检查网络后刷新重试');
+      resetToMenu();
+    }
+  },15000);
   peer=new Peer();
   peer.on('open',()=>{
     hostConn=peer.connect(code,{reliable:false});
-    hostConn.on('open',()=>{ hideLoading(); roomCode=code; hostConn.send({type:'hello',name:myName,color:myColor}); });
+    hostConn.on('open',()=>{
+      joined=true; clearTimeout(timer);
+      hideLoading(); roomCode=code; hostConn.send({type:'hello',name:myName,color:myColor});
+    });
     hostConn.on('data',d=>handleHostData(d));
     hostConn.on('close',()=>{uiLog('与房主断开连接'); resetToMenu();});
     hostConn.on('error',()=>{uiLog('连接出错'); resetToMenu();});
   });
   peer.on('error',e=>{
-    hideLoading();
+    if(inGame&&(e.type==='network'||e.type==='socket-error'||e.type==='server-error'||e.type==='disconnected')){
+      uiLog('网络波动，正在重连…');
+      if(peer&&!peer.destroyed){try{peer.reconnect();}catch(_){}}
+      return;
+    }
+    hideLoading(); clearTimeout(timer);
     if(e.type==='peer-unavailable')uiLog('房间 '+code+' 不存在或已关闭');
     else uiLog('连接失败：'+e.type+'，请检查网络');
     resetToMenu();
+  });
+  peer.on('disconnected',()=>{
+    if(peer&&!peer.destroyed){try{peer.reconnect();}catch(e){}}
   });
 }
 
