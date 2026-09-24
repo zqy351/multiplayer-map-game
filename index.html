@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>大地图探险 · 多人联机小游戏</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23203d2c'/%3E%3Ccircle cx='16' cy='16' r='9' fill='%23f0b93a'/%3E%3Cpath d='M16 9l2.2 4.8L23 16l-4.8 2.2L16 23l-2.2-4.8L9 16l4.8-2.2z' fill='%23b8871d'/%3E%3C/svg%3E" />
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+:root{
+  --bg:#0b1220;
+  --panel:rgba(13,25,40,.94);
+  --line:rgba(255,255,255,.12);
+  --text:#e7edf4;
+  --muted:#93a4b8;
+  --gold:#f0b93a;
+}
+*{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body{ width:100%; height:100%; overflow:hidden; background:var(--bg); color:var(--text);
+  font-family:"PingFang SC","Microsoft YaHei","Noto Sans SC",system-ui,-apple-system,sans-serif;
+  -webkit-user-select:none; user-select:none; }
+button{ font-family:inherit; }
+#game{ position:fixed; inset:0; display:block; width:100vw; height:100vh; background:#16291c; touch-action:none; }
+
+/* ===== 主菜单 ===== */
+#menu{ position:fixed; inset:0; z-index:40; display:flex; align-items:center; justify-content:center; padding:20px;
+  background:linear-gradient(165deg,#0b1220 0%,#132a1d 55%,#1d3a28 100%); }
+#menu .panel{ width:min(420px,100%); background:var(--panel); border:1px solid var(--line); border-radius:18px;
+  padding:32px 26px 26px; box-shadow:0 24px 70px rgba(0,0,0,.45); }
+#menu .mark{ width:54px; height:54px; margin:0 auto 14px; display:block; }
+#menu h1{ font-size:26px; letter-spacing:3px; text-align:center; color:#fff; font-weight:700; }
+#menu .sub{ margin:9px 0 22px; color:var(--muted); font-size:14px; text-align:center; line-height:1.7; }
+input{ width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--line); background:rgba(255,255,255,.06);
+  color:var(--text); font-size:15px; outline:none; }
+input:focus{ border-color:var(--gold); }
+input::placeholder{ color:#5d6f84; }
+#nick{ margin-bottom:12px; }
+#roomCode{ display:none; margin-bottom:12px; letter-spacing:5px; text-transform:uppercase; text-align:center; font-size:18px; }
+.btn-row{ display:flex; gap:10px; }
+.btn{ flex:1; padding:13px 0; border:none; border-radius:10px; font-size:15px; font-weight:600; cursor:pointer; transition:filter .15s; }
+.btn:disabled{ opacity:.5; cursor:not-allowed; }
+.btn.primary{ background:linear-gradient(135deg,#ffd25e,#eda31a); color:#241a04; }
+.btn.secondary{ background:rgba(255,255,255,.08); color:var(--text); border:1px solid var(--line); }
+.btn:hover:not(:disabled){ filter:brightness(1.08); }
+#menuLog{ margin-top:14px; min-height:18px; font-size:13px; color:var(--gold); text-align:center; }
+.tip{ margin-top:18px; padding-top:14px; border-top:1px solid rgba(255,255,255,.08); font-size:13px; color:var(--muted); line-height:1.8; }
+
+/* ===== 游戏内 HUD ===== */
+#hud{ position:fixed; top:14px; left:14px; z-index:30; display:none; gap:8px; align-items:center; }
+.hud-box{ background:rgba(6,12,22,.74); border:1px solid var(--line); border-radius:10px; padding:8px 12px; font-size:13px; }
+.hud-box b{ color:var(--gold); letter-spacing:2px; margin-left:4px; }
+#copyBtn{ margin-left:8px; background:rgba(255,255,255,.1); border:1px solid var(--line); color:var(--text);
+  border-radius:6px; padding:3px 10px; font-size:12px; cursor:pointer; }
+#copyBtn:hover{ background:rgba(255,255,255,.2); }
+#btnLeave{ background:rgba(255,255,255,.08); border:1px solid var(--line); color:var(--text); border-radius:10px;
+  padding:8px 14px; font-size:13px; cursor:pointer; }
+#btnLeave:hover{ background:rgba(255,255,255,.16); }
+#board{ position:fixed; top:14px; right:162px; z-index:30; width:150px; display:none; background:rgba(6,12,22,.74);
+  border:1px solid var(--line); border-radius:10px; padding:9px 11px; font-size:12px; }
+#board .ttl{ color:var(--muted); margin-bottom:5px; font-size:11px; letter-spacing:1px; }
+#board .row{ display:flex; align-items:center; gap:7px; padding:3px 0; }
+#board .row.me{ color:#fff; }
+#board .dot{ width:9px; height:9px; border-radius:50%; flex:none; }
+#board .nm{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#board .sc{ color:var(--gold); font-weight:600; }
+#sysLog{ position:fixed; bottom:26px; left:50%; transform:translateX(-50%); z-index:30; display:none;
+  background:rgba(6,12,22,.88); border:1px solid var(--line); border-radius:10px; padding:9px 16px;
+  font-size:13px; max-width:86vw; text-align:center; }
+
+@media (max-width:520px){
+  #board{ width:118px; right:154px; }
+  #board .nm{ max-width:52px; }
+  .hud-box{ padding:6px 9px; font-size:13px; }
+  #copyBtn{ padding:2px 8px; font-size:13px; }
+  input{ font-size:16px; }
+}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- ===== 主菜单 ===== -->
+<div id="menu">
+  <div class="panel">
+    <svg class="mark" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="32" cy="32" r="26" fill="#1c3a2a" stroke="#f0b93a" stroke-width="3"/>
+      <path d="M32 12l6 14 14 6-14 6-6 14-6-14-14-6 14-6z" fill="#f0b93a"/>
+      <circle cx="32" cy="32" r="4" fill="#fff3c4"/>
+    </svg>
+    <h1>大地图探险</h1>
+    <p class="sub">多人联机 · 在 6000×6000 的广阔大陆上<br/>奔跑、捡金币、比得分</p>
+    <input id="nick" maxlength="8" placeholder="你的昵称" />
+    <input id="roomCode" maxlength="5" placeholder="5 位房间码" />
+    <div class="btn-row">
+      <button id="btnCreate" class="btn primary">创建房间</button>
+      <button id="btnJoin" class="btn secondary">加入房间</button>
+    </div>
+    <div id="menuLog"></div>
+    <p class="tip">操作：WASD / 方向键移动，手机端左下角虚拟摇杆。房主创建房间后把 5 位房间码发给朋友即可同场游玩；所有玩家地图一致、位置与得分实时同步。房间随房主退出而关闭，联机需联网。</p>
+  </div>
+</div>
+
+<!-- ===== 游戏内 HUD ===== -->
+<div id="hud">
+  <div class="hud-box">房间码<b id="roomCodeText">-</b><button id="copyBtn">复制</button></div>
+  <div class="hud-box" id="playersInfo">在线 1 人</div>
+  <button id="btnLeave">离开</button>
+</div>
+<div id="board"></div>
+<div id="sysLog"></div>
+
+<script>
+(function(){
+'use strict';
+/* ============ 元素 ============ */
+const $=id=>document.getElementById(id);
+const canvas=$('game'), ctx=canvas.getContext('2d');
+const sysLog=$('sysLog');
+
+/* ============ 常量 ============ */
+const TILE=50, MAP_W=120, MAP_H=120;
+const WORLD_W=MAP_W*TILE, WORLD_H=MAP_H*TILE;
+const PLAYER_R=16, SPEED=230, COIN_NUM=150;
+const COLORS=['#ff6b6b','#4dabf7','#3ddc84','#ffc233','#c77dff','#22d3ee','#f783ac','#b8f34a'];
+const CODE_CHARS='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+/* ============ 工具 ============ */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const rng=mulberry32(20260924);
+function makeCode(){let s='';for(let i=0;i<5;i++)s+=CODE_CHARS[Math.floor(Math.random()*CODE_CHARS.length)];return s;}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+/* ============ 地图生成（固定种子，所有端一致） ============ */
+const grid=[];
+for(let y=0;y<MAP_H;y++){grid.push(new Array(MAP_W).fill(0));}
+for(let i=0;i<7;i++){ /* 湖泊 */
+  const cx=Math.floor(rng()*MAP_W), cy=Math.floor(rng()*MAP_H), r=3+rng()*5;
+  for(let y=Math.max(1,cy-6);y<=Math.min(MAP_H-2,cy+6);y++)
+    for(let x=Math.max(1,cx-6);x<=Math.min(MAP_W-2,cx+6);x++)
+      if(Math.hypot(x-cx,y-cy)<=r) grid[y][x]=3;
+}
+for(let i=0;i<45;i++){ /* 森林 */
+  const cx=Math.floor(rng()*MAP_W), cy=Math.floor(rng()*MAP_H), r=2+rng()*4;
+  for(let y=Math.max(1,cy-5);y<=Math.min(MAP_H-2,cy+5);y++)
+    for(let x=Math.max(1,cx-5);x<=Math.min(MAP_W-2,cx+5);x++)
+      if(grid[y][x]===0&&Math.hypot(x-cx,y-cy)<=r&&rng()<0.6) grid[y][x]=1;
+}
+for(let i=0;i<90;i++){ /* 岩石 */
+  const x=1+Math.floor(rng()*(MAP_W-2)), y=1+Math.floor(rng()*(MAP_H-2));
+  if(grid[y][x]===0) grid[y][x]=2;
+}
+for(let x=0;x<MAP_W;x++){grid[0][x]=3;grid[MAP_H-1][x]=3;} /* 边界水域 */
+for(let y=0;y<MAP_H;y++){grid[y][0]=3;grid[y][MAP_W-1]=3;}
+
+let coins=[];
+{
+  let guard=0;
+  while(coins.length<COIN_NUM&&guard<8000){
+    guard++;
+    const tx=1+Math.floor(rng()*(MAP_W-2)), ty=1+Math.floor(rng()*(MAP_H-2));
+    if(grid[ty][tx]!==0) continue;
+    const x=tx*TILE+TILE/2, y=ty*TILE+TILE/2;
+    if(coins.some(c=>Math.hypot(c.x-x,c.y-y)<TILE*1.5)) continue;
+    coins.push({id:coins.length,x,y,taken:false});
+  }
+}
+
+function isSolid(tx,ty){if(tx<0||ty<0||tx>=MAP_W||ty>=MAP_H)return true;return grid[ty][tx]!==0;}
+function hitsSolid(x,y,r){
+  const t0x=Math.floor((x-r)/TILE),t1x=Math.floor((x+r)/TILE),t0y=Math.floor((y-r)/TILE),t1y=Math.floor((y+r)/TILE);
+  for(let ty=t0y;ty<=t1y;ty++)for(let tx=t0x;tx<=t1x;tx++){
+    if(isSolid(tx,ty)){
+      const cx=Math.max(tx*TILE,Math.min(x,tx*TILE+TILE));
+      const cy=Math.max(ty*TILE,Math.min(y,ty*TILE+TILE));
+      if(Math.hypot(x-cx,y-cy)<=r) return true;
+    }
+  }
+  return false;
+}
+function movePlayer(p,dx,dy){
+  p.x+=dx; if(hitsSolid(p.x,p.y,PLAYER_R)) p.x-=dx;
+  p.y+=dy; if(hitsSolid(p.x,p.y,PLAYER_R)) p.y-=dy;
+  p.x=Math.max(PLAYER_R,Math.min(WORLD_W-PLAYER_R,p.x));
+  p.y=Math.max(PLAYER_R,Math.min(WORLD_H-PLAYER_R,p.y));
+}
+function spawnPos(){
+  for(let i=0;i<600;i++){
+    const tx=2+Math.floor(Math.random()*(MAP_W-4)),ty=2+Math.floor(Math.random()*(MAP_H-4));
+    const x=tx*TILE+TILE/2,y=ty*TILE+TILE/2;
+    if(grid[ty][tx]===0&&!hitsSolid(x,y,PLAYER_R+10)) return {x,y};
+  }
+  return {x:WORLD_W/2,y:WORLD_H/2};
+}
+
+/* ============ 游戏状态 ============ */
+let peer=null, hostConn=null, isHost=false, roomCode='', myPeerId='';
+let me=null, players={};
+let inGame=false, joined=false;
+let myName='', myColor=COLORS[Math.floor(Math.random()*COLORS.length)];
+function makeMe(){const s=spawnPos();return {id:'',name:myName,color:myColor,x:s.x,y:s.y,score:0};}
+
+/* ============ 网络（PeerJS，房主中转） ============ */
+function serializePlayers(){return Object.values(players).map(p=>({id:p.id,name:p.name,color:p.color,x:Math.round(p.x),y:Math.round(p.y),score:p.score}));}
+function broadcast(msg){for(const k in peer.connections){peer.connections[k].forEach(c=>{if(c.open)try{c.send(msg);}catch(e){}});}}
+function broadcastCoins(){broadcast({type:'coins',coins:coins.map(c=>({id:c.id,x:c.x,y:c.y,taken:c.taken}))});}
+
+function handleHostMsg(id,msg){
+  if(!msg||typeof msg!=='object')return;
+  if(msg.type==='hello'){
+    const p=players[id]={id,name:String(msg.name||'玩家').slice(0,8),
+      color:COLORS.includes(msg.color)?msg.color:COLORS[Math.floor(Math.random()*COLORS.length)],x:0,y:0,score:0};
+    const s=spawnPos(); p.x=s.x; p.y=s.y;
+    broadcast({type:'sys',text:p.name+' 加入了游戏'});
+    const joinMsg={type:'join',players:serializePlayers(),coins:coins.map(c=>({id:c.id,x:c.x,y:c.y,taken:c.taken}))};
+    peer.connections[id].forEach(c=>{if(c.open)c.send(joinMsg);});
+  }else if(msg.type==='pos'&&players[id]){
+    players[id].x=msg.x; players[id].y=msg.y;
+  }else if(msg.type==='collect'&&players[id]){
+    const c=coins.find(c=>c.id===msg.coinId&&!c.taken);
+    if(c){c.taken=true; players[id].score++; broadcastCoins();}
+  }
+}
+function onClientLeft(id){
+  if(!players[id])return;
+  const name=players[id].name;
+  delete players[id];
+  broadcast({type:'left',id});
+  broadcast({type:'sys',text:name+' 离开了游戏'});
+}
+
+function handleHostData(msg){
+  if(!msg||typeof msg!=='object')return;
+  if(msg.type==='state'){
+    const seen={};
+    for(const p of msg.players){
+      if(p.id===myPeerId){me.score=p.score;continue;}
+      if(!players[p.id]){
+        players[p.id]={id:p.id,name:p.name,color:p.color,x:p.x,y:p.y,score:p.score};
+        if(joined)uiLog(p.name+' 加入了游戏');
+      }else{
+        const q=players[p.id]; q.x=p.x; q.y=p.y; q.score=p.score;
+      }
+      seen[p.id]=1;
+    }
+    for(const k in players){ if(!seen[k]&&k!==myPeerId){ delete players[k]; } }
+  }else if(msg.type==='join'){
+    players={};
+    for(const p of msg.players){ if(p.id===myPeerId)continue; players[p.id]={id:p.id,name:p.name,color:p.color,x:p.x,y:p.y,score:p.score}; }
+    coins=msg.coins.map(c=>({id:c.id,x:c.x,y:c.y,taken:c.taken}));
+    showGame(); joined=true;
+    uiLog('已进入房间 '+roomCode);
+  }else if(msg.type==='coins'){
+    coins=msg.coins.map(c=>({id:c.id,x:c.x,y:c.y,taken:c.taken}));
+  }else if(msg.type==='left'){
+    if(players[msg.id]){const n=players[msg.id].name; delete players[msg.id]; uiLog(n+' 离开了游戏');}
+  }else if(msg.type==='sys'){
+    uiLog(msg.text);
+  }
+}
+
+function cleanupPeer(){
+  if(hostConn){try{hostConn.close();}catch(e){} hostConn=null;}
+  if(peer){try{peer.destroy();}catch(e){} peer=null;}
+  isHost=false; inGame=false; joined=false; roomCode=''; myPeerId=''; players={}; me=null;
+}
+function resetToMenu(){
+  cleanupPeer();
+  $('menu').style.display='flex'; $('hud').style.display='none'; $('board').style.display='none';
+}
+function showGame(){
+  $('menu').style.display='none'; $('hud').style.display='flex'; $('board').style.display='block';
+  $('roomCodeText').textContent=roomCode; inGame=true;
+}
+
+function createRoom(){
+  cleanupPeer();
+  isHost=true;
+  myName=$('nick').value.trim()||('玩家'+Math.floor(10+Math.random()*90));
+  me=makeMe();
+  showLoading('正在创建房间…');
+  const tryCreate=()=>{
+    const code=makeCode();
+    peer=new Peer(code);
+    peer.on('open',id=>{
+      myPeerId=id; roomCode=id; me.id=id;
+      players={}; players[id]=me;
+      hideLoading(); showGame();
+      uiLog('房间创建成功，把房间码发给朋友吧');
+    });
+    peer.on('connection',c=>{
+      c.on('open',()=>{
+        c.on('data',d=>handleHostMsg(c.peer,d));
+        c.on('close',()=>onClientLeft(c.peer));
+        c.on('error',()=>onClientLeft(c.peer));
+      });
+    });
+    peer.on('error',e=>{
+      if(e.type==='unavailable-id'){try{peer.destroy();}catch(_){} tryCreate();}
+      else{hideLoading(); uiLog('创建失败：'+e.type+'，请检查网络'); resetToMenu();}
+    });
+  };
+  tryCreate();
+}
+
+function joinRoom(code){
+  cleanupPeer();
+  isHost=false;
+  myName=$('nick').value.trim()||('玩家'+Math.floor(10+Math.random()*90));
+  me=makeMe();
+  showLoading('正在连接房间 '+code+' …');
+  peer=new Peer();
+  peer.on('open',()=>{
+    hostConn=peer.connect(code,{reliable:false});
+    hostConn.on('open',()=>{ hideLoading(); roomCode=code; hostConn.send({type:'hello',name:myName,color:myColor}); });
+    hostConn.on('data',d=>handleHostData(d));
+    hostConn.on('close',()=>{uiLog('与房主断开连接'); resetToMenu();});
+    hostConn.on('error',()=>{uiLog('连接出错'); resetToMenu();});
+  });
+  peer.on('error',e=>{
+    hideLoading();
+    if(e.type==='peer-unavailable')uiLog('房间 '+code+' 不存在或已关闭');
+    else uiLog('连接失败：'+e.type+'，请检查网络');
+    resetToMenu();
+  });
+}
+
+/* ============ 输入 ============ */
+const keys={};
+addEventListener('keydown',e=>{
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
+  keys[e.code]=true;
+});
+addEventListener('keyup',e=>{keys[e.code]=false;});
+addEventListener('blur',()=>{for(const k in keys)keys[k]=false;});
+
+let joy={active:false,ox:0,oy:0,dx:0,dy:0};
+canvas.addEventListener('touchstart',e=>{
+  if(e.touches.length===1){const t=e.touches[0]; joy.active=true; joy.ox=t.clientX; joy.oy=t.clientY; joy.dx=0; joy.dy=0;}
+},{passive:true});
+canvas.addEventListener('touchmove',e=>{
+  if(!joy.active)return;
+  e.preventDefault();
+  const t=e.touches[0];
+  let dx=t.clientX-joy.ox, dy=t.clientY-joy.oy;
+  const len=Math.hypot(dx,dy), R=52;
+  if(len>R){dx=dx/len*R; dy=dy/len*R;}
+  joy.dx=dx/R; joy.dy=dy/R;
+},{passive:false});
+canvas.addEventListener('touchend',()=>{joy.active=false; joy.dx=0; joy.dy=0;});
+canvas.addEventListener('touchcancel',()=>{joy.active=false; joy.dx=0; joy.dy=0;});
+
+function inputVec(){
+  let dx=0,dy=0;
+  if(keys['ArrowLeft']||keys['KeyA'])dx-=1;
+  if(keys['ArrowRight']||keys['KeyD'])dx+=1;
+  if(keys['ArrowUp']||keys['KeyW'])dy-=1;
+  if(keys['ArrowDown']||keys['KeyS'])dy+=1;
+  if(joy.active&&(joy.dx||joy.dy)){dx+=joy.dx; dy+=joy.dy;}
+  const len=Math.hypot(dx,dy);
+  if(len>1){dx/=len; dy/=len;}
+  return {dx,dy,len};
+}
+
+/* ============ 画布 ============ */
+let W=innerWidth, H=innerHeight, camX=0, camY=0;
+function resize(){
+  W=innerWidth; H=innerHeight;
+  const dpr=Math.min(2,window.devicePixelRatio||1);
+  canvas.width=W*dpr; canvas.height=H*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+addEventListener('resize',resize);
+resize();
+
+function drawPlayer(p,isMe){
+  ctx.beginPath(); ctx.arc(p.x,p.y,PLAYER_R,0,Math.PI*2);
+  ctx.fillStyle=p.color; ctx.fill();
+  ctx.lineWidth=isMe?4:2; ctx.strokeStyle=isMe?'#ffffff':'rgba(255,255,255,.55)'; ctx.stroke();
+  ctx.font='bold 13px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.textAlign='center'; ctx.lineWidth=3; ctx.strokeStyle='rgba(0,0,0,.75)';
+  ctx.strokeText(p.name,p.x,p.y-26);
+  ctx.fillStyle='#fff'; ctx.fillText(p.name,p.x,p.y-26);
+}
+
+function drawScene(ts){
+  ctx.clearRect(0,0,W,H);
+  if(!me)return;
+  camX=Math.max(0,Math.min(me.x-W/2,WORLD_W-W));
+  camY=Math.max(0,Math.min(me.y-H/2,WORLD_H-H));
+  ctx.save();
+  ctx.translate(-camX,-camY);
+
+  const t0x=Math.floor(camX/TILE)-1, t1x=Math.ceil((camX+W)/TILE)+1;
+  const t0y=Math.floor(camY/TILE)-1, t1y=Math.ceil((camY+H)/TILE)+1;
+  for(let ty=Math.max(0,t0y);ty<=Math.min(MAP_H-1,t1y);ty++){
+    for(let tx=Math.max(0,t0x);tx<=Math.min(MAP_W-1,t1x);tx++){
+      const g=grid[ty][tx], px=tx*TILE, py=ty*TILE;
+      if(g===0){
+        ctx.fillStyle=((tx*7+ty*13)%3===0)?'#3f8f4a':'#398545';
+        ctx.fillRect(px,py,TILE,TILE);
+        if((tx*31+ty*17)%7===0){ctx.fillStyle='rgba(255,255,255,.05)';ctx.fillRect(px+10,py+10,4,4);}
+      }else if(g===3){
+        ctx.fillStyle='#2f6cb0'; ctx.fillRect(px,py,TILE,TILE);
+        if((tx*11+ty*7)%4===0){ctx.fillStyle='rgba(255,255,255,.09)';ctx.beginPath();ctx.arc(px+16,py+24,5,0,Math.PI*2);ctx.fill();}
+      }else if(g===1){
+        ctx.fillStyle='#2f6b3a'; ctx.fillRect(px,py,TILE,TILE);
+        ctx.fillStyle='#5b3a1e'; ctx.fillRect(px+TILE/2-4,py+TILE*0.68,8,12);
+        ctx.fillStyle='#2c5e33'; ctx.beginPath(); ctx.arc(px+TILE/2,py+TILE*0.52,TILE*0.42,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='rgba(255,255,255,.07)'; ctx.beginPath(); ctx.arc(px+TILE*0.4,py+TILE*0.36,6,0,Math.PI*2); ctx.fill();
+      }else{
+        ctx.fillStyle='#7d7d7d'; ctx.fillRect(px,py,TILE,TILE);
+        ctx.fillStyle='#666'; ctx.beginPath(); ctx.arc(px+TILE/2,py+TILE/2,TILE*0.3,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='rgba(255,255,255,.12)'; ctx.beginPath(); ctx.arc(px+TILE*0.4,py+TILE*0.4,5,0,Math.PI*2); ctx.fill();
+      }
+    }
+  }
+
+  const bob=Math.sin(ts/420)*3;
+  for(const c of coins){
+    if(c.taken)continue;
+    if(c.x<camX-40||c.x>camX+W+40||c.y<camY-40||c.y>camY+H+40)continue;
+    const y=c.y+bob;
+    ctx.beginPath(); ctx.arc(c.x,y,8,0,Math.PI*2); ctx.fillStyle='#e8b93a'; ctx.fill();
+    ctx.lineWidth=2; ctx.strokeStyle='#b8871d'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(c.x,y,3,0,Math.PI*2); ctx.fillStyle='#fff3c4'; ctx.fill();
+  }
+
+  for(const p of Object.values(players)){
+    if(p.x<camX-80||p.x>camX+W+80||p.y<camY-80||p.y>camY+H+80)continue;
+    drawPlayer(p,p.id===myPeerId);
+  }
+  if(!isHost&&me)drawPlayer(me,true);
+  ctx.restore();
+
+  drawMinimap();
+  if(joy.active)drawJoystick();
+}
+
+function drawMinimap(){
+  const size=130, pad=14, x=W-size-pad, y=pad;
+  ctx.fillStyle='rgba(6,12,22,.68)';
+  ctx.fillRect(x-5,y-5,size+10,size+10);
+  const k=size/WORLD_W;
+  for(let ty=0;ty<MAP_H;ty+=2)for(let tx=0;tx<MAP_W;tx+=2){
+    const g=grid[ty][tx];
+    ctx.fillStyle=g===0?'#2e6b3a':(g===1?'#1d4d27':(g===2?'#757575':'#2a6cb8'));
+    ctx.fillRect(x+tx*TILE*k,y+ty*TILE*k,2.2,2.2);
+  }
+  const dot=p=>{ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(x+p.x*k,y+p.y*k,3,0,Math.PI*2);ctx.fill();
+    if(p.id===myPeerId){ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();}};
+  for(const p of Object.values(players))dot(p);
+  if(!isHost&&me)dot(me);
+  ctx.strokeStyle='rgba(255,255,255,.55)'; ctx.lineWidth=1;
+  ctx.strokeRect(x+camX*k,y+camY*k,Math.max(8,W*k),Math.max(8,H*k));
+}
+
+function drawJoystick(){
+  const bx=86, by=H-96, R=52;
+  ctx.globalAlpha=.6;
+  ctx.beginPath(); ctx.arc(bx,by,R,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.14)'; ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.45)'; ctx.lineWidth=2; ctx.stroke();
+  ctx.beginPath(); ctx.arc(bx+joy.dx*R*0.7,by+joy.dy*R*0.7,24,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,.35)'; ctx.fill();
+  ctx.globalAlpha=1;
+}
+
+/* ============ 主循环 ============ */
+function tryCollect(p){
+  for(const c of coins){
+    if(!c.taken&&Math.hypot(p.x-c.x,p.y-c.y)<PLAYER_R+12){c.taken=true; p.score++; return c.id;}
+  }
+  return null;
+}
+let lastT=0, lastSend=0, lastBoard=0;
+function loop(ts){
+  requestAnimationFrame(loop);
+  const dt=Math.min(0.05,((ts-lastT)/1000)||0.016);
+  lastT=ts;
+  if(me&&inGame){
+    const v=inputVec();
+    if(v.len>0)movePlayer(me,(v.dx/v.len)*SPEED*dt,(v.dy/v.len)*SPEED*dt);
+    const got=tryCollect(me);
+    if(got!==null){
+      if(isHost)broadcastCoins();
+      else if(hostConn&&hostConn.open)hostConn.send({type:'collect',coinId:got});
+    }
+    if(!isHost&&hostConn&&hostConn.open&&ts-lastSend>80){
+      lastSend=ts;
+      hostConn.send({type:'pos',x:Math.round(me.x),y:Math.round(me.y)});
+    }
+  }
+  drawScene(ts);
+  if(ts-lastBoard>400&&inGame){
+    lastBoard=ts;
+    const list=isHost?Object.values(players):Object.values(players).concat(me?[me]:[]);
+    list.sort((a,b)=>b.score-a.score);
+    $('playersInfo').textContent='在线 '+list.length+' 人';
+    $('board').innerHTML='<div class="ttl">得分榜</div>'+list.map(p=>
+      '<div class="row'+(p.id===myPeerId?' me':'')+'"><span class="dot" style="background:'+p.color+'"></span>'+
+      '<span class="nm">'+escapeHtml(p.name)+'</span><span class="sc">'+p.score+'</span></div>').join('');
+  }
+}
+
+/* 房主状态广播（10Hz） */
+setInterval(()=>{
+  if(isHost&&peer&&peer.open&&me&&Object.keys(peer.connections).length>0){
+    broadcast({type:'state',players:serializePlayers()});
+  }
+},100);
+
+/* ============ UI ============ */
+let logT=0;
+function uiLog(txt){
+  sysLog.innerHTML='<span>'+escapeHtml(txt)+'</span>';
+  sysLog.style.display='block';
+  clearTimeout(logT);
+  logT=setTimeout(()=>{sysLog.style.display='none';},3500);
+}
+function showLoading(t){$('menuLog').textContent=t; $('btnCreate').disabled=true; $('btnJoin').disabled=true;}
+function hideLoading(){$('menuLog').textContent=''; $('btnCreate').disabled=false; $('btnJoin').disabled=false;}
+
+$('nick').value='玩家'+Math.floor(10+Math.random()*90);
+$('btnCreate').addEventListener('click',createRoom);
+$('btnJoin').addEventListener('click',()=>{
+  const input=$('roomCode');
+  if(input.style.display==='none'){input.style.display='block'; input.focus(); return;}
+  const code=input.value.trim().toUpperCase();
+  if(!/^[A-Z0-9]{5}$/.test(code)){uiLog('请输入 5 位房间码'); return;}
+  joinRoom(code);
+});
+$('roomCode').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){
+    const code=e.target.value.trim().toUpperCase();
+    if(/^[A-Z0-9]{5}$/.test(code))joinRoom(code);
+    else uiLog('请输入 5 位房间码');
+  }
+});
+$('copyBtn').addEventListener('click',()=>{
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(roomCode).then(()=>uiLog('房间码已复制'),()=>uiLog('复制失败，请手动复制'));
+  }else uiLog('复制失败，请手动复制');
+});
+$('btnLeave').addEventListener('click',()=>{resetToMenu(); uiLog('已离开房间');});
+
+if(typeof Peer==='undefined'){
+  const s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js';
+  document.head.appendChild(s);
+  uiLog('正在加载联机组件，请稍候…');
+}
+
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
