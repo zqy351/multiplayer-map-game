@@ -349,7 +349,8 @@ function joinRoom(code){
     }
   },20000);
   peer=new Peer({config:ICE_CONFIG});
-  peer.on('open',()=>{
+  peer.on('open',id=>{
+    myPeerId=id;
     hostConn=peer.connect(code,{reliable:false});
     hostConn.on('open',()=>{
       joined=true; clearTimeout(timer);
